@@ -20,9 +20,11 @@ En la Raspberry Pi, con las cabeceras correspondientes al kernel en ejecución:
 
 Si las cabeceras están en otra ubicación:
 
-    make KDIR=/ruta/al/kernel/build
+    make KERNEL_SRC=/ruta/al/kernel/build
 
-Una vez implementado, se generará un único módulo: placa_auxiliar.ko.
+La compilación copia el Makefile y los fuentes a build/ y ejecuta Kbuild allí.
+Los ficheros generados quedan dentro de ese directorio, ignorado por Git.
+Una vez implementado, se generará el módulo build/placa_auxiliar.ko.
 La estructura vacía todavía no constituye un módulo compilable.
 Para compilar desde otra arquitectura también habrá que configurar ARCH y
 CROSS_COMPILE para el kernel y la cadena de compilación de destino.
@@ -31,4 +33,4 @@ Limpieza de los ficheros generados:
 
     make clean
 
-Si se usó un KDIR distinto, indicar el mismo valor al ejecutar make clean.
+La limpieza elimina build/ completo y no necesita las cabeceras del kernel.

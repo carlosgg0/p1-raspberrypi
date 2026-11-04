@@ -10,8 +10,11 @@ ccflags-y += -I$(src)/include
 .PHONY: all clean
 
 all:
-	$(MAKE) -C "$(KERNEL_SRC)" M="$(CURDIR)" modules
+	mkdir -p build
+	cp Makefile build/Makefile
+	cp -R src include build/
+	$(MAKE) -C "$(KERNEL_SRC)" M="$(CURDIR)/build" modules
 
 clean:
-	$(MAKE) -C "$(KERNEL_SRC)" M="$(CURDIR)" clean
+	rm -rf -- build
 
