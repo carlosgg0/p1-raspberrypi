@@ -10,6 +10,8 @@
 #include <linux/interrupt.h>
 #include <linux/gpio.h>
 
+#include "placa_auxiliar.h"
+
 #define DRIVER_AUTHOR "DAC-UMA"
 #define DRIVER_DESC   "Device driver with interrupt handler for berryclip"
 
@@ -19,6 +21,8 @@ static void cleanup(void)
 
     // USAR LAS CORRESPONDIENTES FUNCIONES DE LIMPIEZA
     
+    leds_cleanup();
+    
     printk(KERN_NOTICE "%s: Done.\n", KBUILD_MODNAME);
     
     return;
@@ -27,7 +31,9 @@ static void cleanup(void)
 static int init(void)
 {
     printk(KERN_NOTICE "%s: module loading...\n", KBUILD_MODNAME);
-
+	
+	leds_init();
+	
     return 0;
 }
 
