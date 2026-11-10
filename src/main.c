@@ -12,17 +12,16 @@
 
 #include "placa_auxiliar.h"
 
-#define DRIVER_AUTHOR "DAC-UMA"
-#define DRIVER_DESC   "Device driver with interrupt handler for berryclip"
+#define DRIVER_AUTHOR "Jose Carlos D. N. & Carlos G. G."
+#define DRIVER_DESC   "Device driver for the first DSO project"
 
 static void cleanup(void)
 {
     printk(KERN_NOTICE "%s: cleaning up\n", KBUILD_MODNAME);
-
-    // USAR LAS CORRESPONDIENTES FUNCIONES DE LIMPIEZA
     
+    speaker_cleanup();
     leds_cleanup();
-    
+
     printk(KERN_NOTICE "%s: Done.\n", KBUILD_MODNAME);
     
     return;
@@ -30,17 +29,26 @@ static void cleanup(void)
 
 static int init(void)
 {
+    int res;
+    
     printk(KERN_NOTICE "%s: module loading...\n", KBUILD_MODNAME);
 	
-	leds_init();
-	
+	res = leds_init();
+    if (res < 0) 
+        return res;
+
+    res = speaker_init();
+    if (res < 0) {
+        leds_cleanup();
+        return res;
+    }
+
     return 0;
 }
 
 module_init(init);
 module_exit(cleanup);
 
-// Module licensing & description
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR(DRIVER_AUTHOR);
 MODULE_DESCRIPTION(DRIVER_DESC);

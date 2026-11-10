@@ -23,7 +23,6 @@
 
 #define CORRECT_GPIO(n) (512+n)
 
-
 static int gpio_led[] = {	
     CORRECT_GPIO(GPIO_RED_LED1),
 	CORRECT_GPIO(GPIO_RED_LED2),
@@ -32,9 +31,6 @@ static int gpio_led[] = {
 	CORRECT_GPIO(GPIO_GREEN_LED1),
 	CORRECT_GPIO(GPIO_GREEN_LED2) 
 };
-
-static char leds = '\0';
-
 
 char *led_desc[] = {
     "LED ROJO 1",
@@ -45,46 +41,67 @@ char *led_desc[] = {
     "LED VERDE 2"
 };
 
-// device file operations
+static char leds = '\0';
+
+static int gpios_reserved;
+static bool device_registered;
+
+void mask_leds(int mode, char mask)
+{
+    switch (mode) {
+        case 0: // Enciende leds de bits a 1 y apaga los de bits a 0
+            leds = mask;
+            break;
+
+        case 1: // Enciende leds de bits a 1 y deja el resto igual
+            leds = (char)((int)leds | (int)mask);
+            break;
+
+        case 2: // Apaga los leds de bits a 1 y deja el resto igual
+            leds = (char)((int)leds & ~(int)mask);
+            break;
+
+        case 3: // NOT de todos los bits
+            leds = (char)((int)leds ^ (int)mask);
+            break;
+        
+        default:
+            break;
+    }
+}
+
 static ssize_t leds_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
 {
-    char ch;
-    int minor = iminor(file->f_path.dentry->d_inode);
-    int led;
+    unsigned char ch;
+    int led, mode;
 
-    if (*ppos > 0) return count;
-    if (copy_from_user(&ch, buf, 1)) return -EFAULT;
-    if (minor > NUM_LEDS) return -ENOSYS;
-    if (minor == 0) {
-        for (led = 0; led < NUM_LEDS; led++) {
-            gpio_set_value(gpio_led[led], (int)ch & 1);
-        }
-        printk(KERN_INFO "%s: set all leds to %d\n", KBUILD_MODNAME, (int)ch & 1);
-    } else {
-        printk(KERN_WARNING "%s: invalid minor number %d\n", KBUILD_MODNAME, minor);
+    if (count == 0) 
+        return count;
+    
+    if (copy_from_user(&ch, buf, 1)) 
+        return -EFAULT;
+
+    mode = (int)ch >> 6;
+
+    mask_leds(mode, ch & 0x3F);
+
+    for (led = 0; led < NUM_LEDS; led++) {
+        gpio_set_value(gpio_led[led], ((int)leds >> led) & 1);
     }
-    *ppos += 1;
-    return 1;
+    
+    return count;
 }
 
 static ssize_t leds_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 {
-    int ch = 0;
-    int minor = iminor(file->f_path.dentry->d_inode);
-    int led;
-
-    if (*ppos > 0) return 0;
-    if (minor > NUM_LEDS) return -ENOSYS;
-    if (minor == 0) {
-        printk(KERN_WARNING "%s: invalid minor number %d\n", KBUILD_MODNAME, minor);
-    } else {
-        led = minor - 1;
-        ch = gpio_get_value(gpio_led[led]);
-        printk(KERN_INFO "%s: get led %s (%#x)\n", KBUILD_MODNAME, led_desc[led], ch);
-    }
-    ch += '0';
-    if (copy_to_user(buf, &ch, 1)) return -EFAULT;
+    if (*ppos > 0 || count == 0) 
+        return 0;
+    
+    if (copy_to_user(buf, &leds, 1)) 
+        return -EFAULT;
+    
     *ppos += 1;
+    
     return 1;
 }
 
@@ -95,87 +112,74 @@ static const struct file_operations leds_fops = {
 };
 
 // device struct
-static struct miscdevice miscdev = {
+static struct miscdevice misc_dev = {
     .minor      = MISC_DYNAMIC_MINOR,
     .name       = "leds",
     .fops       = &leds_fops,
     .mode       = S_IRUGO | S_IWUGO,
 };
 
+static int dev_config(void)
+{
+    int ret = 0;
+    
+    ret = misc_register(&misc_dev);
+    if (!ret)
+        device_registered = true;
+
+    return ret;
+}
+
 static int gpio_config(void)
 {
-    int i, res;
+    int res;
 
-    for(i = 0; i < NUM_LEDS; i++) {
-        if ((res = gpio_is_valid(gpio_led[i])) < 0) {
-            printk(KERN_ERR "%s:   Invalid GPIO %d\n", KBUILD_MODNAME, gpio_led[i]);
+    for (int i = 0; i < NUM_LEDS; i++) {
+        if (!gpio_is_valid(gpio_led[i])) 
+            return -EINVAL;
+
+        res = gpio_request_one(gpio_led[i], GPIOF_INIT_LOW, led_desc[i]);
+        if (res < 0) 
             return res;
-        }
-        if ((res = gpio_request_one(gpio_led[i], GPIOF_INIT_LOW, led_desc[i])) < 0) {
-            printk(KERN_ERR "%s:   GPIO request failure: led %s GPIO %d\n",
-					KBUILD_MODNAME, led_desc[i], gpio_led[i]);
-            return res;
-        }
-        if ((res = gpio_direction_output(gpio_led[i], 0)) < 0) {
-            printk(KERN_ERR "%s:   GPIO set direction output failure: led %s GPIO %d\n",
-					KBUILD_MODNAME, led_desc[i], gpio_led[i]);
-            return res;
-        }
+
+        gpios_reserved++;
 	}
 
     return 0;
 }
 
-static int r_dev_config(void)
-{
-    int ret = 0;
-    
-    ret = misc_register(&miscdev);
-    if (ret < 0) 
-		printk(KERN_ERR "%s: misc_register failed\n", KBUILD_MODNAME);
-    else 
-		printk(KERN_NOTICE "%s: misc_register OK... b_miscdev.minor=%d\n", KBUILD_MODNAME, miscdev.minor);
-    
-    return ret;
-}
-
 int leds_init(void)
 {
 	int res;
-	
-    printk(KERN_NOTICE "%s: module loading\n", KBUILD_MODNAME);
     
-    printk(KERN_NOTICE "%s:  devices config\n", KBUILD_MODNAME);
-    if ((res = r_dev_config())) {
-        printk(KERN_ERR "%s:  failed\n", KBUILD_MODNAME);
-        return res;
-    }
-    
-    printk(KERN_NOTICE "%s:  ok\n", KBUILD_MODNAME);
-	
-    printk(KERN_NOTICE "%s:  GPIO config\n", KBUILD_MODNAME);
-    if((res = gpio_config())) {
-        printk(KERN_ERR "%s:  failed\n", KBUILD_MODNAME);
-        leds_cleanup();
-        return res;
-    }
+    res = gpio_config();
+    if (res < 0)
+        goto error;
 
-    printk(KERN_NOTICE "%s:  ok\n", KBUILD_MODNAME);
+    res = dev_config();
+    if (res < 0)
+        goto error;
 	
     return 0;
+
+error:
+    leds_cleanup();
+    return res;
 }
 
 void leds_cleanup(void)
 {
     int i;
     
-    printk(KERN_NOTICE "%s: cleaning up ", KBUILD_MODNAME);
-    
-    for(i = 0; i < NUM_LEDS; i++) {
-        gpio_free(gpio_led[i]);
+    if (device_registered) {
+        misc_deregister(&misc_dev);
+        device_registered = false;
     }
-    
-    printk(KERN_NOTICE "%s: DONE\n", KBUILD_MODNAME);
+
+    while (gpios_reserved > 0) {
+        gpios_reserved--;
+        gpio_free(gpio_led[gpios_reserved]);
+    }
     
     return;
 }
