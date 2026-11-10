@@ -8,7 +8,7 @@
 
 static int speaker_gpio = -1;
 module_param(speaker_gpio, int, 0444);
-MODULE_PARAM_DESC(speaker_gpio, "Numero GPIO del altavoz");
+MODULE_PARM_DESC(speaker_gpio, "Numero GPIO del altavoz");
 
 static ssize_t speaker_write(struct file* file, const char __user *buf, size_t count, loff_t *ppos){
     char value;
@@ -45,7 +45,7 @@ int speaker_init(void){
     ret = gpio_request_one(speaker_gpio, GPIOF_OUT_INIT_LOW, "placa_auxiliar_speaker");
 
     if(ret)
-        return ret
+        return ret;
 
     ret = misc_register(&speaker_device);
     if(ret){
