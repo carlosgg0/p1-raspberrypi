@@ -21,6 +21,7 @@ static void cleanup(void)
     
     speaker_cleanup();
     leds_cleanup();
+    buttons_cleanup();
 
     printk(KERN_NOTICE "%s: Done.\n", KBUILD_MODNAME);
     
@@ -39,6 +40,13 @@ static int init(void)
 
     res = speaker_init();
     if (res < 0) {
+        leds_cleanup();
+        return res;
+    }
+
+    res = buttons_init()
+    if (res < 0){
+        speaker_cleanup()
         leds_cleanup();
         return res;
     }
