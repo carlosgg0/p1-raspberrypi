@@ -43,6 +43,13 @@ static int init(void)
         return res;
     }
 
+    res = buttons_init();
+    if (res < 0) {
+        leds_cleanup();
+        speaker_cleanup();
+        return res;
+    }
+
     return 0;
 }
 
