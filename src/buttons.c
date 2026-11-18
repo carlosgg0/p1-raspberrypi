@@ -11,6 +11,8 @@
 #include <linux/delay.h>
 #include <linux/kfifo.h>
 #include <linux/interrupt.h>
+#include <linux/semaphore.h>
+#include <linux/wait.h>
 
 #include "placa_auxiliar.h"
 
@@ -20,10 +22,9 @@
 #define BUTTON1_DESC "button1"
 #define BUTTON2_DESC "button2"
 
-#define MAX_GAP_IN_JIFFIES 20
-
 static int value = 500;
 module_param(value, int, S_IRUGO); // POR DEFECTO 500 ms
+MODULE_PARM_DESC(value, "Tiempo de filtrado de rebotes en milisegundos");
 
 static DEFINE_KFIFO(buttons_fifo, char, 64);
 
@@ -33,28 +34,37 @@ static DEFINE_SEMAPHORE(fifo_semaphore, 1);
 
 static DEFINE_SEMAPHORE(open_semaphore, 1);
 
-static int irq_button1 = 0;
-static int irq_button2 = 0;
 
 static bool device_registered;
 
 struct button_data {
     char character;
+    int gpio;
+    int irq;
+    bool gpio_reserved;
+    bool has_last;
+    unsigned long last;
 };
 
-static struct button_data button1 = { .character = '1' };
-static struct button_data button2 = { .character = '2' };
+static struct button_data button1 = {
+    .character = '1', .gpio = BUTTON1, .irq = -1,
+};
+static struct button_data button2 = {
+    .character = '2', .gpio = BUTTON2, .irq = -1,
+};
 
 static irqreturn_t irq_handler(int irq, void *dev_id)
 {
-    static unsigned long long last = 0;
-    unsigned long long now = get_jiffies_64();
-    
-    if (now - last < MAX_GAP_IN_JIFFIES) {
-        return IRQ_HANDLED;
-    }
+    struct button_data *button = dev_id;
+    unsigned long now = jiffies;
 
-    last = now;
+    /* Cada IRQ actualiza únicamente el filtro de su propio botón. */
+    if (button->has_last &&
+        time_before(now, button->last + msecs_to_jiffies(value)))
+        return IRQ_HANDLED;
+
+    button->last = now;
+    button->has_last = true;
 
     return IRQ_WAKE_THREAD;
 }
@@ -77,11 +87,11 @@ static irqreturn_t irq_thread_function(int irq, void *dev_id)
 static ssize_t button_read(struct file *file, char __user *buf, 
                             size_t count, loff_t *ppos)
 {
-    if (count == 0) 
-        return 0;
-    
     char chars_read[64];
     unsigned int n;
+
+    if (count == 0)
+        return 0;
 
     for(;;) {
         if (wait_event_interruptible(wait_queue, 
@@ -139,7 +149,7 @@ static struct miscdevice miscdev = {
     .minor      = MISC_DYNAMIC_MINOR,
     .name       = "buttons",
     .fops       = &fops,
-    .mode       = S_IRUGO | S_IWUGO,
+    .mode       = S_IRUGO,
 };
 
 static int dev_config(void)
@@ -153,31 +163,29 @@ static int dev_config(void)
     return ret;
 }
 
-int configure_button(int gpio_num, char *gpio_desc, int *irq_button, struct button_data *button) 
+static int configure_button(struct button_data *button, const char *description)
 {
-    int res;
+    int res, irq;
 
-    if ((res = gpio_is_valid(gpio_num))) {
+    if (!gpio_is_valid(button->gpio))
+        return -EINVAL;
+
+    res = gpio_request_one(button->gpio, GPIOF_IN, description);
+    if (res < 0)
         return res;
-    }
+    button->gpio_reserved = true;
 
-    if ((res = gpio_request(gpio_num, gpio_desc)) < 0) {
+    irq = gpio_to_irq(button->gpio);
+    if (irq < 0)
+        return irq;
+
+    res = request_threaded_irq(irq, irq_handler, irq_thread_function,
+                               IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+                               description, button);
+    if (res < 0)
         return res;
-    }
 
-    if ((*irq_button = gpio_to_irq(gpio_num)) < 0) {
-        return *irq_button;
-    }
-    
-    if ((res = request_threaded_irq(*irq_button,
-                                    irq_handler,
-                                    irq_thread_function,
-                                    IRQF_TRIGGER_FALLING,
-                                    gpio_desc,
-                                    button)) < 0) {
-        return res;
-    }
-
+    button->irq = irq;
     return 0;
 }
 
@@ -185,19 +193,20 @@ int buttons_init(void)
 {
     int res;
 
-    if ((res = configure_button(BUTTON1, 
-                                BUTTON1_DESC, 
-                                &irq_button1,
-                                &button1))) {
-        goto error;
-    }
+    if (value < 0)
+        return -EINVAL;
 
-    if ((res = configure_button(BUTTON2, 
-                                BUTTON2_DESC, 
-                                &irq_button2,
-                                &button2))) {
+    kfifo_reset(&buttons_fifo);
+    button1.has_last = false;
+    button2.has_last = false;
+
+    res = configure_button(&button1, BUTTON1_DESC);
+    if (res < 0)
         goto error;
-    }
+
+    res = configure_button(&button2, BUTTON2_DESC);
+    if (res < 0)
+        goto error;
 
     res = dev_config();
     if (res)
@@ -210,22 +219,26 @@ error:
     return res;
 }
 
-void buttons_cleanup(void) 
+static void cleanup_button(struct button_data *button)
+{
+    if (button->irq >= 0) {
+        free_irq(button->irq, button);
+        button->irq = -1;
+    }
+
+    if (button->gpio_reserved) {
+        gpio_free(button->gpio);
+        button->gpio_reserved = false;
+    }
+}
+
+void buttons_cleanup(void)
 {
     if (device_registered) {
         misc_deregister(&miscdev);
         device_registered = false;
     }
 
-    if (irq_button1 > 0) {
-        free_irq(irq_button1, &button1);
-        gpio_free(BUTTON1);
-    }
-
-    if (irq_button2 > 0) {
-        free_irq(irq_button2, &button2);
-        gpio_free(BUTTON2);
-    }
-
-    return;
+    cleanup_button(&button2);
+    cleanup_button(&button1);
 }
