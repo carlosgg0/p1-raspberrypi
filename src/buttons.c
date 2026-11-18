@@ -29,7 +29,9 @@ static DEFINE_KFIFO(buttons_fifo, char, 64);
 
 static DECLARE_WAIT_QUEUE_HEAD(wait_queue);
 
-DEFINE_SEMAPHORE(semaphore, 1);
+static DEFINE_SEMAPHORE(fifo_semaphore, 1);
+
+static DEFINE_SEMAPHORE(open_semaphore, 1);
 
 static int irq_button1 = 0;
 static int irq_button2 = 0;
@@ -62,9 +64,9 @@ static irqreturn_t irq_thread_function(int irq, void *dev_id)
     int res;
     struct button_data *button = dev_id;
 
-    down(&semaphore);
+    down(&fifo_semaphore);
     res = kfifo_put(&buttons_fifo, button->character);
-    up(&semaphore);
+    up(&fifo_semaphore);
 
     if (res) 
         wake_up_interruptible(&wait_queue);
@@ -82,23 +84,23 @@ static ssize_t button_read(struct file *file, char __user *buf,
     unsigned int n;
 
     for(;;) {
-        if (wait_event_interruptible(wait_queue, !kfifo_is_empty(&buttons_fifo))) {
+        if (wait_event_interruptible(wait_queue, 
+                                    !kfifo_is_empty(&buttons_fifo))) 
             return -ERESTARTSYS;
-        }
     
-        if (down_interruptible(&semaphore)) 
+        if (down_interruptible(&fifo_semaphore)) 
             return -ERESTARTSYS;
 
         if (!kfifo_is_empty(&buttons_fifo))
             break;
         
-        up(&semaphore);
+        up(&fifo_semaphore);
     }
 
     n = kfifo_out(&buttons_fifo, chars_read, 
                 (count < sizeof(chars_read)) ? count : sizeof(chars_read));
     
-    up(&semaphore);
+    up(&fifo_semaphore);
 
     if (copy_to_user(buf, chars_read, n)) 
         return -EFAULT;
@@ -106,9 +108,30 @@ static ssize_t button_read(struct file *file, char __user *buf,
     return n;
 }
 
+static int button_open(struct inode *inode, struct file *filp)
+{
+    if (filp->f_flags & O_NONBLOCK) {
+        if (down_trylock(&open_semaphore))
+            return -EBUSY;
+    } else {
+        if (down_interruptible(&open_semaphore))
+            return -ERESTARTSYS;
+    }
+
+    return 0;
+}
+
+static int button_release(struct inode *inode, struct file *filp)
+{
+    up(&open_semaphore);
+    return 0;
+}
+
 static const struct file_operations fops = {
     .owner      = THIS_MODULE,
     .read       = button_read,
+    .open       = button_open,
+    .release    = button_release,
 };
 
 // device struct
