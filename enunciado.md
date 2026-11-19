@@ -28,7 +28,7 @@ Deben usarse interrupciones para controlar la pulsación de teclas. Utilizar una
 
 Si cuando el usuario realiza una lectura del device no hay pulsaciones en el buffer, la lectura debe ser bloqueada en espera de una nueva pulsación. Se despertará la lectura del device cuando se reciba una pulsación de botón y se pueda servir la lectura al usuario. Para que la llamada a la syscall read del device buttons sea bloqueante utilizar una cola de espera. Este es el interfaz necesario para gestionar el bloqueo de las lecturas:
 
-```
+```c
 DECLARE_WAIT_QUEUE_HEAD()    // declara una cola de espera en el kernel
 wait_event_interruptible()   // el proceso actual se bloquea en una cola de espera según una condición, normalmente en la función read() del dispositivo, cuando hayq ue esperar que se complete la operación de E/S
 wake_up_interruptible()      // desbloquea a los procesos que esperan en una cola de espera, normalmente desde un tasklet arrancado después de la interrupción que nos informa de que ya se puede continuar la operación de E/S

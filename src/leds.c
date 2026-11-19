@@ -169,8 +169,6 @@ error:
 
 void leds_cleanup(void)
 {
-    int i;
-    
     if (device_registered) {
         misc_deregister(&misc_dev);
         device_registered = false;
