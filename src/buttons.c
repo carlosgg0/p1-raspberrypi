@@ -75,6 +75,13 @@ static irqreturn_t irq_thread_function(int irq, void *dev_id)
     struct button_data *button = dev_id;
 
     down(&fifo_semaphore);
+
+    if (kfifo_is_full(&buttons_fifo)) {
+        printk(KERN_NOTICE "%s: KFIFO lleno!\n", KBUILD_MODNAME);
+        up(&fifo_semaphore);
+        return IRQ_HANDLED;
+    }
+    
     res = kfifo_put(&buttons_fifo, button->character);
     up(&fifo_semaphore);
 
