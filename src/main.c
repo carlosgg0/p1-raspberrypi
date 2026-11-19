@@ -19,6 +19,7 @@ static void cleanup(void)
 {
     printk(KERN_NOTICE "%s: cleaning up\n", KBUILD_MODNAME);
     
+    buttons_cleanup();
     speaker_cleanup();
     leds_cleanup();
 
