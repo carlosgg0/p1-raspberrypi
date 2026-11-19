@@ -16,8 +16,8 @@
 
 #include "placa_auxiliar.h"
 
-#define BUTTON1 (512+2)
-#define BUTTON2 (512+3)
+#define BUTTON1 512+2
+#define BUTTON2 512+3 
 
 #define BUTTON1_DESC "button1"
 #define BUTTON2_DESC "button2"
@@ -71,69 +71,6 @@ static irqreturn_t irq_handler(int irq, void *dev_id)
 
 static irqreturn_t irq_thread_function(int irq, void *dev_id)
 {
-    int gpio_num;
-    char key;
-
-    if (dev_id == &irq_button1) {
-        gpio_num = BUTTON1;
-        key = '1';
-    } else if (dev_id == &irq_button2) {
-        gpio_num = BUTTON2;
-        key = '2';
-    } else {
-        return IRQ_NONE;
-    }
-
-    if (debounce_ms > 0) {
-        msleep(debounce_ms);
-    }
-
-    if (gpio_get_value_cansleep(gpio_num) == 0) {
-        buttons_push_event(key);
-    }
-
-    return IRQ_HANDLED;
-}
-
-static bool buttons_have_events(void)
-{
-    unsigned long flags;
-    bool available;
-
-    spin_lock_irqsave(&buttons_fifo_lock, flags);
-    available = !kfifo_is_empty(&buttons_fifo);
-    spin_unlock_irqrestore(&buttons_fifo_lock, flags);
-
-    return available;
-}
-
-static int buttons_open(struct inode *inode, struct file *file)
-{
-    if (file->f_flags & O_NONBLOCK) {
-        if (down_trylock(&buttons_open_sem)) {
-            return -EBUSY;
-        }
-    } else {
-        if (down_interruptible(&buttons_open_sem)) {
-            return -ERESTARTSYS;
-        }
-    }
-
-    return 0;
-}
-
-static int buttons_release(struct inode *inode, struct file *file)
-{
-    up(&buttons_open_sem);
-    return 0;
-}
-
-static ssize_t buttons_read(struct file *file, char __user *buf,
-                            size_t count, loff_t *ppos)
-{
-    unsigned long flags;
-    unsigned int copied;
-    char key;
     int res;
     struct button_data *button = dev_id;
 
@@ -255,7 +192,6 @@ static int configure_button(struct button_data *button, const char *description)
 int buttons_init(void)
 {
     int res;
-    sema_init(&buttons_open_sem, 1);
 
     if (value < 0)
         return -EINVAL;
