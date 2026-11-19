@@ -45,15 +45,9 @@ static int init(void)
     }
 
     res = buttons_init();
-<<<<<<< HEAD
-    if (res < 0){
-        speaker_cleanup();
-        leds_cleanup();
-=======
     if (res < 0) {
         leds_cleanup();
         speaker_cleanup();
->>>>>>> main
         return res;
     }
 
