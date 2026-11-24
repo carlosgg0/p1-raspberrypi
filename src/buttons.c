@@ -81,7 +81,9 @@ static irqreturn_t irq_thread_function(int irq, void *dev_id)
         up(&fifo_semaphore);
         return IRQ_HANDLED;
     }
-    
+
+    printk(KERN_NOTICE "%s: Llevas %d pulsaciones", KBUILD_MODNAME, kfifo_size(&buttons_fifo));
+
     res = kfifo_put(&buttons_fifo, button->character);
     up(&fifo_semaphore);
 
