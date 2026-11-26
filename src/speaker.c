@@ -6,9 +6,7 @@
 
 #include "placa_auxiliar.h"
 
-static int speaker_gpio = -1;
-module_param(speaker_gpio, int, 0444);
-MODULE_PARM_DESC(speaker_gpio, "Numero GPIO del altavoz");
+static int speaker_gpio = 516;
 
 static ssize_t speaker_write(struct file* file, const char __user *buf, size_t count, loff_t *ppos){
     char value;

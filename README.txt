@@ -1,36 +1,31 @@
-Proyecto de Diseño de Sistemas Operativos
+Proyecto de Device Driver 
+
+Alumnos: José Carlos Durán Nuño y Carlos García Guzmán
 
 Estructura inicial
 ------------------
-Makefile                  Compilación del módulo mediante Kbuild.
-src/main.c                Inicialización y liberación del módulo y recursos comunes.
-src/leds.c                Gestión de /dev/leds.
-src/speaker.c             Gestión de /dev/speaker.
-src/buttons.c             Gestión de /dev/buttons, interrupciones y sincronización.
-include/placa_auxiliar.h   Declaraciones compartidas entre los ficheros del módulo.
+Makefile
+src/main.c                  Inicialización y limpieza del módulo
+src/leds.c                  Gestión de /dev/leds
+src/speaker.c               Gestión de /dev/speaker
+src/buttons.c               Gestión de /dev/buttons
+include/placa_auxiliar.h    Declaraciones de las funciones de inicialización de cada device
 
-Los ficheros C y la cabecera están vacíos, pendientes de implementación.
+Compilación:
 
-Compilación
------------
-Se necesitan make, un compilador y las cabeceras del kernel de destino.
-En la Raspberry Pi, con las cabeceras correspondientes al kernel en ejecución:
+$ make
 
-    make
+Esta genera un directorio build/ que contiene el fichero placa_auxiliar.ko
 
-Si las cabeceras están en otra ubicación:
 
-    make KERNEL_SRC=/ruta/al/kernel/build
+Instalar el módulo:
 
-La compilación copia el Makefile y los fuentes a build/ y ejecuta Kbuild allí.
-Los ficheros generados quedan dentro de ese directorio, ignorado por Git.
-Una vez implementado, se generará el módulo build/placa_auxiliar.ko.
-La estructura vacía todavía no constituye un módulo compilable.
-Para compilar desde otra arquitectura también habrá que configurar ARCH y
-CROSS_COMPILE para el kernel y la cadena de compilación de destino.
+$ sudo insmod build/placa_auxiliar.ko value=500 
 
-Limpieza de los ficheros generados:
+El parámetro value hace referencia al tiempo en milisegundos que debe transcurrir
+entre dos pulsaciones de un mismo botón (para filtrar los rebotes).
 
-    make clean
 
-La limpieza elimina build/ completo y no necesita las cabeceras del kernel.
+Eliminarlo:
+
+$ sudo rmmod placa_auxiliar

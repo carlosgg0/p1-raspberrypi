@@ -3,3 +3,4 @@
 # Clang specific files
 .cache
 compile_commands.json
+.clangd

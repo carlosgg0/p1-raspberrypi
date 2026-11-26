@@ -16,5 +16,5 @@ all:
 	$(MAKE) -C "$(KERNEL_SRC)" M="$(CURDIR)/build" modules
 
 clean:
-	rm -rf -- build
+	rm -rf build
 
